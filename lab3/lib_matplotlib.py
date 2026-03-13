@@ -42,27 +42,32 @@ plt.tight_layout()
 plt.show()
 
 # 6. Время суток для C6H6
-df['Time'] = pd.to_datetime(df['Time'], format='%H:%M:%S')
+df['Time_clean'] = df['Time'].astype(str).str.replace('.', ':', regex=False)
+df['Time'] = pd.to_datetime(df['Time_clean'], format='%H:%M:%S', errors='coerce')
 df['Hour'] = df['Time'].dt.hour
 
 
 def time_period(hour):
+    if pd.isna(hour):
+        return 'Неизвестно'
     if 6 <= hour < 12:
         return 'Утро'
     elif 12 <= hour < 18:
         return 'День'
     elif 18 <= hour < 24:
-        return 'Вечер'
+        return 'Ночь'
     else:
         return 'Ночь'
 
 
 df['Period'] = df['Hour'].apply(time_period)
-c6h6_period = df.groupby('Period')['C6H6(GT)'].apply(list)
+
+c6h6_period = df.dropna(subset=['C6H6(GT)']).groupby('Period')['C6H6(GT)'].apply(list)
 
 plt.figure(figsize=(10, 6))
 for period in c6h6_period.index:
-    plt.hist(c6h6_period[period], alpha=0.7, label=period, bins=15)
+    if len(c6h6_period[period]) > 0:
+        plt.hist(c6h6_period[period], alpha=0.7, label=period, bins=15)
 plt.xlabel('C6H6(GT)')
 plt.ylabel('Частота')
 plt.title('Распределение C6H6 по времени суток')
@@ -81,14 +86,17 @@ plt.xticks(rotation=45)
 plt.tight_layout()
 plt.show()
 
-# 8. Зависимость загрязнителей от температуры (scatter plots)
+# 8. Зависимость загрязнителей от температуры
 fig, axes = plt.subplots(2, 2, figsize=(15, 12))
 pollutants = ['CO(GT)', 'C6H6(GT)', 'NOx(GT)', 'NO2(GT)']
 colors = ['red', 'blue', 'green', 'orange']
 
 for i, (poll, color) in enumerate(zip(pollutants, colors)):
-    ax = axes[i//2, i % 2]
-    ax.scatter(df['T'], df[poll].dropna(), alpha=0.5, c=color, s=10)
+    ax = axes[i // 2, i % 2]
+
+    valid_data = df[['T', poll]].dropna()
+    ax.scatter(valid_data['T'], valid_data[poll], alpha=0.5, c=color, s=10)
+
     ax.set_xlabel('Температура (°C)')
     ax.set_ylabel(poll)
     ax.set_title(f'{poll} от T')
