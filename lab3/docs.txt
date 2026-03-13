@@ -1,0 +1,27 @@
+ЛАБОРАТОРНАЯ РАБОТА (Matplotlib)
+
+1. РАСПРЕДЕЛЕНИЕ CO(GT) ПО ИНТЕРВАЛАМ
+co_bins = pd.cut(df['CO(GT)'].dropna(), bins=10) → делит CO на 10 равных интервалов
+co_count = co_bins.value_counts().sort_index() → считает кол-во в каждом
+co_count.plot(kind='bar') → столбчатая диаграмма
+
+2. ЛОГАРИФМИЧЕСКАЯ Y
+co_count.plot(kind='bar', logy=True) → log(количество) для длинного хвоста
+
+3-5. ГИСТОГРАММЫ T ПО CO
+co_mean = df['CO(GT)'].mean()
+high_co/low_co → фильтр по CO выше/ниже среднего
+plt.hist(..., bins=20, density=True, alpha=0.5) → плотность, полупрозрачные
+red/blue цвета + legend()
+
+6. C6H6 ПО ВРЕМЕНИ СУТОК
+df['Hour'] = pd.to_datetime(df['Time']).dt.hour
+df['Period'] = apply(утро6-12/день12-18/вечер18-24/ночь0-6)
+plt.hist(c6h6_period[period]) → наложенные гистограммы
+
+7. BOXPLOt CO ПО ПЕРИОДАМ
+df.boxplot(column='CO(GT)', by='Period') → коробки с усами по времени суток
+
+8. SCATTER ЗАГРЯЗНИТЕЛИ ОТ T
+plt.subplots(2,2) → 4 графика
+ax.scatter(df['T'], df[pollutant], alpha=0.5) → точки для CO/C6H6/NOx/NO2
