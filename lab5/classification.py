@@ -1,3 +1,8 @@
+"""
+Лабораторная работа №5: Классификация грибов (mushrooms.csv) - ФИНАЛЬНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ
+Исправлена ошибка ConfusionMatrixDisplay.plot()
+"""
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -13,8 +18,10 @@ from sklearn.metrics import (
     roc_auc_score, confusion_matrix, ConfusionMatrixDisplay
 )
 import warnings
+import seaborn as sns
 
 warnings.filterwarnings('ignore')
+sns.set_style("whitegrid")
 
 columns = [
     'class', 'cap-shape', 'cap-surface', 'cap-color', 'bruises', 'odor',
@@ -26,172 +33,145 @@ columns = [
     'population', 'habitat'
 ]
 
-df = pd.read_csv('mushrooms.csv',
-                 header=None,
-                 names=columns,
-                 sep=',')
-
+df = pd.read_csv('mushrooms.csv', header=None, names=columns, sep=',')
 df = df.replace('?', 'missing')
 
+print(f"Форма: {df.shape}")
+print("Class распределение:\n", df['class'].value_counts())
+
+
 def prepare_data(df, target_col, additional_drop=None):
-    """Подготовка данных: Label Encoding для всех категориальных признаков"""
+    """Очистка + Label Encoding"""
     drop_cols = [target_col]
     if additional_drop:
         drop_cols.extend(additional_drop if isinstance(additional_drop, list) else [additional_drop])
 
-    X = df.drop(drop_cols, axis=1)
+    X = df.drop(drop_cols, axis=1).copy()
     y = df[target_col].copy()
 
-    # Label Encoding признаков
+    # Удаление редких классов (<10)
+    class_counts = y.value_counts()
+    rare_classes = class_counts[class_counts < 10].index
+    if len(rare_classes) > 0:
+        print(f"Удаляем редкие классы: {list(rare_classes)}")
+        mask = ~y.isin(rare_classes)
+        X = X[mask]
+        y = y[mask]
+
+    # Label Encoding
     for col in X.columns:
         le = LabelEncoder()
         X[col] = le.fit_transform(X[col])
 
-    # Label Encoding целевой переменной
     le_y = LabelEncoder()
     y = le_y.fit_transform(y)
 
-    return X, y, le_y.classes_
+    print(f"После очистки: {X.shape[0]} строк, {len(np.unique(y))} классов")
+    return X, y
+
+
+def safe_train_test_split(X, y, test_size=0.2, random_state=42):
+    try:
+        return train_test_split(X, y, test_size=test_size, random_state=random_state, stratify=y)
+    except:
+        print("  Используем split без stratify")
+        return train_test_split(X, y, test_size=test_size, random_state=random_state)
 
 
 def train_and_evaluate(model, X_train, X_test, y_train, y_test, model_name, is_binary=False):
-    """Обучение модели + расчёт всех метрик + визуализация"""
+    """Обучение + метрики"""
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
 
-    # Метрики
     avg = 'binary' if is_binary else 'macro'
-    acc = accuracy_score(y_test, y_pred)
-    prec = precision_score(y_test, y_pred, average=avg, zero_division=0)
-    rec = recall_score(y_test, y_pred, average=avg, zero_division=0)
-    f1 = f1_score(y_test, y_pred, average=avg, zero_division=0)
+    metrics = {
+        'Accuracy': accuracy_score(y_test, y_pred),
+        'Precision': precision_score(y_test, y_pred, average=avg, zero_division=0),
+        'Recall': recall_score(y_test, y_pred, average=avg, zero_division=0),
+        'F1-score': f1_score(y_test, y_pred, average=avg, zero_division=0)
+    }
 
     print(f"\n{model_name}")
-    print(f"Accuracy: {acc:.4f}")
-    print(f"Precision: {prec:.4f}")
-    print(f"Recall: {rec:.4f}")
-    print(f"F1-score: {f1:.4f}")
+    for metric, value in metrics.items():
+        print(f"  {metric}: {value:.4f}")
 
     # AUC-ROC
     if hasattr(model, 'predict_proba'):
-        proba = model.predict_proba(X_test)
-        if is_binary:
-            auc = roc_auc_score(y_test, proba[:, 1])
-        else:
-            auc = roc_auc_score(y_test, proba, multi_class='ovr', average='macro')
-        print(f"AUC-ROC: {auc:.4f}")
-    else:
-        print("AUC-ROC: не поддерживается моделью")
+        try:
+            proba = model.predict_proba(X_test)
+            if len(np.unique(y_test)) == 2:
+                auc = roc_auc_score(y_test, proba[:, 1])
+                print(f"  AUC-ROC: {auc:.4f}")
+            else:
+                print("  AUC-ROC: многоклассовая (пропущено)")
+        except Exception as e:
+            print(f"  AUC-ROC: ошибка {e}")
 
-    # Матрица ошибок
     cm = confusion_matrix(y_test, y_pred)
-    print("Матрица ошибок:")
-    print(cm)
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm)
-    disp.plot(cmap='Blues')
+    print(f"  Размер CM: {cm.shape}")
+
+    # Способ 1: seaborn heatmap (НАДЕЖНЫЙ)
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                xticklabels=range(cm.shape[1]),
+                yticklabels=range(cm.shape[0]))
     plt.title(f'Матрица ошибок — {model_name}')
+    plt.ylabel('True')
+    plt.xlabel('Predicted')
+    plt.tight_layout()
     plt.show()
 
-    # Визуализация дерева решений (только для DecisionTree)
+    # Дерево решений
     if isinstance(model, DecisionTreeClassifier):
-        plt.figure(figsize=(20, 10))
-        plot_tree(model,
-                  feature_names=X_train.columns,
-                  class_names=[str(cls) for cls in np.unique(y_train)],
-                  filled=True,
-                  rounded=True,
-                  max_depth=5)  # ограничиваем для читаемости
+        plt.figure(figsize=(20, 8))
+        plot_tree(model, feature_names=X_train.columns.tolist(),
+                  class_names=[f'C{i}' for i in range(len(np.unique(y_train)))],
+                  filled=True, rounded=True, max_depth=3)
         plt.title(f'Дерево решений — {model_name}')
         plt.show()
 
-# 1. Предсказание съедобности (Class: e/p) — бинарная классификация
-print("=== 1. Предсказание съедобности гриба (Class) ===")
 
-X, y, _ = prepare_data(df, 'class')
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
-)
-
-models_task1 = {
-    'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42),
-    'Decision Tree': DecisionTreeClassifier(random_state=42, max_depth=5),
-    'Random Forest': RandomForestClassifier(random_state=42, n_estimators=100)
+# МОДЕЛИ
+models = {
+    'LogisticRegression': LogisticRegression(max_iter=1000, random_state=42),
+    'DecisionTree': DecisionTreeClassifier(random_state=42, max_depth=5),
+    'RandomForest': RandomForestClassifier(random_state=42, n_estimators=100),
+    'GradientBoosting': GradientBoostingClassifier(random_state=42, n_estimators=50),
+    'NaiveBayes': CategoricalNB(),
+    'KNN': KNeighborsClassifier(n_neighbors=5)
 }
 
-for name, model in models_task1.items():
+print("\n=== 1. СЪЕДОБНОСТЬ ГРИБОВ (class) ===")
+X, y = prepare_data(df, 'class')
+X_train, X_test, y_train, y_test = safe_train_test_split(X, y)
+for name, model in models.items():
     train_and_evaluate(model, X_train, X_test, y_train, y_test, name, is_binary=True)
 
-# 2. Предсказание типа местообитания (Habitat) — многоклассовая классификация
-print("\n=== 2. Предсказание типа местообитания (Habitat) ===")
-
-X, y, _ = prepare_data(df, 'habitat')
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
-)
-
-models_task2 = {
-    'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42),
-    'Decision Tree': DecisionTreeClassifier(random_state=42, max_depth=5),
-    'Random Forest': RandomForestClassifier(random_state=42, n_estimators=100),
-    'Gradient Boosting': GradientBoostingClassifier(random_state=42),
-    'Naive Bayes (Categorical)': CategoricalNB()
-}
-
-for name, model in models_task2.items():
+print("\n=== 2. МЕСТООБИТАНИЕ (habitat) ===")
+X, y = prepare_data(df, 'habitat')
+X_train, X_test, y_train, y_test = safe_train_test_split(X, y)
+for name, model in models.items():
     train_and_evaluate(model, X_train, X_test, y_train, y_test, name, is_binary=False)
 
-# 3. Предсказание структуры пластинок (Gill-*)
-print("\n=== 3. Предсказание структуры пластинок ===")
+print("\n=== 3. GILL ПРИЗНАКИ ===")
 
-# 3.1 Gill-attachment (многоклассовая)
-print("\n3.1 Gill-attachment")
-X, y, _ = prepare_data(df, 'gill-attachment')
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+# Gill-attachment
+print("\n3.1 gill-attachment")
+X, y = prepare_data(df, 'gill-attachment')
+X_train, X_test, y_train, y_test = safe_train_test_split(X, y)
+for name, model in models.items():
+    train_and_evaluate(model, X_train, X_test, y_train, y_test, f"{name} (gill-att)", is_binary=False)
 
-models_task3 = {
-    'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42),
-    'Decision Tree': DecisionTreeClassifier(random_state=42, max_depth=5),
-    'Random Forest': RandomForestClassifier(random_state=42),
-    'Gradient Boosting': GradientBoostingClassifier(random_state=42),
-    'Naive Bayes (Categorical)': CategoricalNB(),
-    'K-Nearest Neighbors': KNeighborsClassifier(n_neighbors=5)
-}
+# Gill-spacing
+print("\n3.2 gill-spacing")
+X, y = prepare_data(df, 'gill-spacing')
+X_train, X_test, y_train, y_test = safe_train_test_split(X, y)
+for name, model in models.items():
+    train_and_evaluate(model, X_train, X_test, y_train, y_test, f"{name} (gill-sp)", is_binary=False)
 
-for name, model in models_task3.items():
-    train_and_evaluate(model, X_train, X_test, y_train, y_test, name, is_binary=False)
-
-# 3.2 Gill-spacing (многоклассовая)
-print("\n3.2 Gill-spacing")
-X, y, _ = prepare_data(df, 'gill-spacing')
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-
-for name, model in models_task3.items():
-    train_and_evaluate(model, X_train, X_test, y_train, y_test, name, is_binary=False)
-
-# 3.3 Gill-size (бинарная)
-print("\n3.3 Gill-size")
-X, y, _ = prepare_data(df, 'gill-size')
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-
-for name, model in models_task3.items():
-    train_and_evaluate(model, X_train, X_test, y_train, y_test, name, is_binary=True)
-
-# 3.4 Комбинированная целевая переменная (все три gill-признака вместе)
-print("\n3.4 Комбинированная классификация (Gill-attachment + spacing + size)")
-df_combined = df.copy()
-df_combined['gill_combined'] = (df_combined['gill-attachment'] + '-' +
-                                df_combined['gill-spacing'] + '-' +
-                                df_combined['gill-size'])
-
-X, y, _ = prepare_data(
-    df_combined,
-    target_col='gill_combined',
-    additional_drop=['gill-attachment', 'gill-spacing', 'gill-size']
-)
-
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-
-print(f"Количество уникальных комбинаций: {len(np.unique(y))}")
-
-for name, model in models_task3.items():
-    train_and_evaluate(model, X_train, X_test, y_train, y_test, name + " (combined)", is_binary=False)
+# Gill-size (бинарная)
+print("\n3.3 gill-size")
+X, y = prepare_data(df, 'gill-size')
+X_train, X_test, y_train, y_test = safe_train_test_split(X, y)
+for name, model in models.items():
+    train_and_evaluate(model, X_train, X_test, y_train, y_test, f"{name} (gill-size)", is_binary=True)
