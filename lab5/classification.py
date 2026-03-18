@@ -1,8 +1,3 @@
-"""
-Лабораторная работа №5: Классификация грибов (mushrooms.csv) - ФИНАЛЬНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ
-Исправлена ошибка ConfusionMatrixDisplay.plot()
-"""
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,7 +10,7 @@ from sklearn.naive_bayes import CategoricalNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
-    roc_auc_score, confusion_matrix, ConfusionMatrixDisplay
+    roc_auc_score, confusion_matrix
 )
 import warnings
 import seaborn as sns
@@ -74,7 +69,7 @@ def safe_train_test_split(X, y, test_size=0.2, random_state=42):
     try:
         return train_test_split(X, y, test_size=test_size, random_state=random_state, stratify=y)
     except:
-        print("  Используем split без stratify")
+        print("Используем split без stratify")
         return train_test_split(X, y, test_size=test_size, random_state=random_state)
 
 
@@ -110,7 +105,7 @@ def train_and_evaluate(model, X_train, X_test, y_train, y_test, model_name, is_b
     cm = confusion_matrix(y_test, y_pred)
     print(f"  Размер CM: {cm.shape}")
 
-    # Способ 1: seaborn heatmap (НАДЕЖНЫЙ)
+    # Способ 1: seaborn heatmap
     plt.figure(figsize=(8, 6))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
                 xticklabels=range(cm.shape[1]),
@@ -131,7 +126,7 @@ def train_and_evaluate(model, X_train, X_test, y_train, y_test, model_name, is_b
         plt.show()
 
 
-# МОДЕЛИ
+# Модели
 models = {
     'LogisticRegression': LogisticRegression(max_iter=1000, random_state=42),
     'DecisionTree': DecisionTreeClassifier(random_state=42, max_depth=5),
